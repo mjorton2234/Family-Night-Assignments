@@ -15,6 +15,7 @@ struct EditFamilyMemberView: View {
     @Query(sort: \FamilyMember.sortOrder) private var familyMembers: [FamilyMember]
     
     let familyMember: FamilyMember
+    let assignmentOwner: FamilyMember
     let currentAssignment: String
     
     @State private var name: String
@@ -24,11 +25,12 @@ struct EditFamilyMemberView: View {
     @State private var avatarImageData: Data?
     @FocusState private var focusedField: FamilyMemberFormField?
     
-    init(familyMember: FamilyMember, currentAssignment: String) {
+    init(familyMember: FamilyMember, assignmentOwner: FamilyMember, currentAssignment: String) {
         self.familyMember = familyMember
+        self.assignmentOwner = assignmentOwner
         self.currentAssignment = currentAssignment
         
-        let activeAssignment = currentAssignment.isEmpty ? familyMember.assignment : currentAssignment
+        let activeAssignment = currentAssignment.isEmpty ? assignmentOwner.assignment : currentAssignment
         let isDefaultAssignment = defaultAssignments.contains(activeAssignment)
         
         _name = State(initialValue: familyMember.name)
@@ -126,7 +128,7 @@ struct EditFamilyMemberView: View {
     private var usedAssignments: Set<String> {
         Set(
             familyMembers
-                .filter { $0.id != familyMember.id }
+                .filter { $0.id != assignmentOwner.id }
                 .map { normalizedAssignment($0.assignment) }
         )
     }
@@ -141,7 +143,7 @@ struct EditFamilyMemberView: View {
     
     private func saveChanges() {
         familyMember.name = trimmedName
-        familyMember.assignment = assignmentToSave
+        assignmentOwner.assignment = assignmentToSave
         familyMember.avatarImageData = avatarImageData
         try? modelContext.save()
         dismiss()
@@ -280,12 +282,15 @@ struct AddFamilyMemberView: View {
     }
     
     private func addFamilyMember() {
+        let newOrder = familyMembers.count
+        
         let familyMember = FamilyMember(
             name: trimmedName,
             assignment: assignmentToSave,
-            avatarImageData: avatarImageData
+            avatarImageData: avatarImageData,
+            sortOrder: newOrder,
+            assignmentOrder: newOrder
         )
-        familyMember.sortOrder = familyMembers.count
         
         modelContext.insert(familyMember)
         try? modelContext.save()

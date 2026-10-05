@@ -107,22 +107,22 @@ struct ContactSupportView: View {
                     Text("Michael Orton")
                 }
                 
-                Button {
+                HStack {
+                    Text("Email")
+                    Spacer()
+                    Text(verbatim: "mjorton22@gmail.com")
+                        .foregroundStyle(Color.primary)
+                        .tint(.primary)
+                }
+                .foregroundStyle(Color.primary)
+                .tint(.primary)
+                .contentShape(Rectangle())
+                .onTapGesture {
                     selectedEmail = SupportEmail(
                         subject: "",
                         body: ""
                     )
-                } label: {
-                    HStack {
-                        Text("Email")
-                        Spacer()
-                        Text("mjorton22@gmail.com")
-                            .foregroundStyle(Color.primary)
-                    }
-                    .foregroundStyle(Color.primary)
                 }
-                .buttonStyle(.plain)
-                .tint(.primary)
                 .contextMenu {
                     Button {
                         UIPasteboard.general.string = "mjorton22@gmail.com"
@@ -133,35 +133,10 @@ struct ContactSupportView: View {
             }
         }
         .sheet(item: $selectedEmail) { email in
-            if MFMailComposeViewController.canSendMail() {
-                MailComposeView(
-                    subject: email.subject,
-                    body: email.body
-                )
-            } else {
-                NavigationStack {
-                    VStack(spacing: 20) {
-                        Image(systemName: "envelope.badge")
-                        Text("Mail is not configured on this device.")
-                        Text("Please email:")
-                        Text("mjorton22@gmail.com")
-                            .fontWeight(.bold)
-                        Button("Copy Email Address") {
-                            UIPasteboard.general.string = "mjorton22@gmail.com"
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                    .navigationTitle("Contact Support")
-                    .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button("Done") {
-                                selectedEmail = nil
-                            }
-                        }
-                    }
-                }
-            }
+            MailComposeView(
+                subject: email.subject,
+                body: email.body
+            )
         }
         .navigationTitle("Contact Support")
         .navigationBarTitleDisplayMode(.inline)
@@ -193,16 +168,15 @@ private struct SupportRow: View {
 }
 
 struct MailComposeView: UIViewControllerRepresentable {
-    @Environment(\.dismiss)
-    private var dismiss
-    
+    @Environment(\.dismiss) private var dismiss
+
     let subject: String
     let body: String
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     func makeUIViewController(context: Context) -> MFMailComposeViewController {
         let viewController = MFMailComposeViewController()
         viewController.mailComposeDelegate = context.coordinator
@@ -211,21 +185,21 @@ struct MailComposeView: UIViewControllerRepresentable {
         viewController.setMessageBody(body, isHTML: false)
         return viewController
     }
-    
+
     func updateUIViewController(_ uiViewController: MFMailComposeViewController, context: Context) {
     }
-    
-    class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
-        let parent: MailComposeView
-        
+
+    final class Coordinator: NSObject, MFMailComposeViewControllerDelegate {
+        private let parent: MailComposeView
+
         init(_ parent: MailComposeView) {
             self.parent = parent
         }
-        
+
         func mailComposeController(
-        _ controller: MFMailComposeViewController,
-        didFinishWith result: MFMailComposeResult,
-        error: Error?
+            _ controller: MFMailComposeViewController,
+            didFinishWith result: MFMailComposeResult,
+            error: Error?
         ) {
             parent.dismiss()
         }

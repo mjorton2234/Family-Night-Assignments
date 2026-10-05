@@ -41,16 +41,18 @@ struct AssignmentsView: View {
     @State private var weekOffset = 0
     @State private var showingAddFamilyMember = false
     @State private var editingSelection: EditMemberSelection?
-    @State private var draggedMember: FamilyMember?
+    @State private var draggedMemberID: UUID?
     
     struct EditMemberSelection: Identifiable {
         let id: UUID
         let familyMember: FamilyMember
+        let assignmentOwner: FamilyMember
         let currentAssignment: String
 
-        init(familyMember: FamilyMember, currentAssignment: String) {
+        init(familyMember: FamilyMember, assignmentOwner: FamilyMember, currentAssignment: String) {
             self.id = familyMember.id
             self.familyMember = familyMember
+            self.assignmentOwner = assignmentOwner
             self.currentAssignment = currentAssignment
         }
     }
@@ -157,6 +159,7 @@ struct AssignmentsView: View {
         .sheet(item: $editingSelection) { selection in
             EditFamilyMemberView(
                 familyMember: selection.familyMember,
+                assignmentOwner: selection.assignmentOwner,
                 currentAssignment: selection.currentAssignment
             )
         }
@@ -206,44 +209,7 @@ struct AssignmentsView: View {
         ScrollView {
             LazyVStack(spacing: 8) {
                 ForEach(Array(familyMembers.enumerated()), id: \.element.id) { index, familyMember in
-                    let assignment = rotatedAssignment(for: index)
-
-                    FamilyMemberRow(
-                        familyMember: familyMember,
-                        assignment: assignment
-                    )
-                    .padding(.horizontal, 4)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        guard weekOffset == 0 else { return }
-                        editingSelection = EditMemberSelection(familyMember: familyMember, currentAssignment: assignment)
-                    }
-                    .contextMenu {
-                        if weekOffset == 0 {
-                            Button("Edit") {
-                                editingSelection = EditMemberSelection(familyMember: familyMember, currentAssignment: assignment)
-                            }
-
-                            Button("Delete", role: .destructive) {
-                                delete(familyMember)
-                            }
-                        }
-                    }
-                    .onDrag {
-                        guard weekOffset == 0 else {
-                            return NSItemProvider()
-                        }
-                        
-                        draggedMember = familyMember
-                        return NSItemProvider(object: familyMember.id.uuidString as NSString)
-                    }
-                    .onDrop(of: [.text], delegate: FamilyMemberDropDelegate(
-                        item: familyMember,
-                        familyMembers: familyMembers,
-                        draggedMember: $draggedMember,
-                        moveAction: moveMembers,
-                        isEditingEnabled: weekOffset == 0
-                    ))
+                    assignmentRow(familyMember: familyMember, index: index)
                 }
             }
             .padding(.vertical, 8)
@@ -254,10 +220,55 @@ struct AssignmentsView: View {
         FamilyNightCalendar(familyNightDay: userSettings.first?.familyNightDay ?? 1)
     }
     
+    private func editFamilyMember(_ familyMember: FamilyMember, currentAssignment: String) {
+        guard let owner = assignmentOwner(for: familyMember) else {
+            return
+        }
+        editingSelection = EditMemberSelection(familyMember: familyMember, assignmentOwner: owner, currentAssignment: currentAssignment)
+    }
+    
+    @ViewBuilder
+    private func assignmentRow(familyMember: FamilyMember, index: Int) -> some View {
+        let assignment = rotatedAssignment(for: familyMember)
+        
+        FamilyMemberRow(name: familyMember.name, assignment: assignment, avatarImageData: familyMember.avatarImageData)
+            .padding(.horizontal, 4)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard weekOffset == 0 else { return }
+                editFamilyMember(familyMember, currentAssignment: assignment)
+            }
+            .contextMenu {
+                if weekOffset == 0 {
+                    Button("Edit") {
+                        editFamilyMember(familyMember, currentAssignment: assignment)
+                    }
+                    Button("Delete", role: .destructive) {
+                        delete(familyMember)
+                    }
+                }
+            }
+            .onDrag {
+                dragProvider(for: familyMember)
+            }
+            .onDrop(of: [.text], delegate: FamilyMemberDropDelegate(itemID: familyMember.id, familyMemberIDs: familyMembers.map(\.id), draggedMemberID: $draggedMemberID, moveAction: moveMembers, isEditingEnabled: weekOffset == 0))
+    }
+    
+    private func dragProvider(for familyMember: FamilyMember) -> NSItemProvider {
+        guard weekOffset == 0 else { return NSItemProvider() }
+        
+        draggedMemberID = familyMember.id
+        return NSItemProvider(
+            object: familyMember.id.uuidString as NSString
+        )
+    }
+    
 private struct FamilyMemberDropDelegate: DropDelegate {
-    let item: FamilyMember
-    let familyMembers: [FamilyMember]
-    @Binding var draggedMember: FamilyMember?
+    let itemID: UUID
+    let familyMemberIDs: [UUID]
+    
+    @Binding var draggedMemberID: UUID?
+    
     let moveAction: (IndexSet, Int) -> Void
     let isEditingEnabled: Bool
 
@@ -266,10 +277,16 @@ private struct FamilyMemberDropDelegate: DropDelegate {
             return
         }
         
-        guard let draggedMember,
-              draggedMember.id != item.id,
-              let from = familyMembers.firstIndex(where: { $0.id == draggedMember.id }),
-              let to = familyMembers.firstIndex(where: { $0.id == item.id }) else {
+        guard let draggedMemberID else {
+            return
+        }
+        
+        guard draggedMemberID != itemID else {
+            return
+        }
+        
+        guard let from = familyMemberIDs.firstIndex(of: draggedMemberID),
+        let to = familyMemberIDs.firstIndex(of: itemID) else {
             return
         }
 
@@ -277,7 +294,7 @@ private struct FamilyMemberDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        draggedMember = nil
+        draggedMemberID = nil
 
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
@@ -286,24 +303,23 @@ private struct FamilyMemberDropDelegate: DropDelegate {
     }
 }
 
-    private func rotatedAssignment(for memberIndex: Int) -> String {
-        let assignments = familyMembers.map(\.assignment)
-        
-        guard !assignments.isEmpty else {
-            return ""
+    private func assignmentOwner(for member: FamilyMember) -> FamilyMember? {
+        guard !familyMembers.isEmpty else {
+            return nil
         }
         
-        let weeksPassed = weeksPassed() + weekOffset
-        let rotatedIndex = ((memberIndex - weeksPassed) % assignments.count + assignments.count) % assignments.count
+        let weeks = weeksPassed() + weekOffset
+        let rotatedIndex = ((member.assignmentOrder - weeks) % familyMembers.count + familyMembers.count) % familyMembers.count
         
-        return assignments[rotatedIndex]
+        return familyMembers.first { $0.assignmentOrder == rotatedIndex}
+    }
+    
+    private func rotatedAssignment(for member: FamilyMember) -> String {
+        assignmentOwner(for: member)?.assignment ?? ""
     }
 
     private func delete(_ familyMember: FamilyMember) {
-        withAnimation {
-            modelContext.delete(familyMember)
-            try? modelContext.save()
-        }
+        modelContext.delete(familyMember)
     }
     
     private func moveMembers(
@@ -320,18 +336,19 @@ private struct FamilyMemberDropDelegate: DropDelegate {
         for (index, member) in reordered.enumerated() {
             member.sortOrder = index
         }
-
-        Task {
-            try? modelContext.save()
-        }
+        
+        try? modelContext.save()
     }
     
     private func initializeSortOrdersIfNeeded() {
-        guard familyMembers.count > 1 else { return }
-        let maxOrder = familyMembers.map(\.sortOrder).max() ?? 0
-        guard maxOrder == 0 else { return }
+        guard !familyMembers.isEmpty else { return }
+        
         for (index, member) in familyMembers.enumerated() {
             member.sortOrder = index
+            
+            if member.assignmentOrder < 0 || member.assignmentOrder >= familyMembers.count {
+                member.assignmentOrder = index
+            }
         }
         try? modelContext.save()
     }
@@ -347,13 +364,14 @@ private struct FamilyMemberDropDelegate: DropDelegate {
 
 
 private struct FamilyMemberRow: View {
-    let familyMember: FamilyMember
+    let name: String
     let assignment: String
+    let avatarImageData: Data?
     
     var body: some View {
         HStack {
-            if let imageData = familyMember.avatarImageData,
-               let uiImage = UIImage(data: imageData) {
+            if let avatarImageData,
+            let uiImage = UIImage(data: avatarImageData) {
 
                 Image(uiImage: uiImage)
                     .resizable()
@@ -372,7 +390,7 @@ private struct FamilyMemberRow: View {
                     .clipShape(Circle())
             }
             
-            Text(familyMember.name)
+            Text(name)
                 .font(.title3)
                 .fontWeight(.semibold)
             
@@ -389,7 +407,7 @@ private struct FamilyMemberRow: View {
     }
     
     private var initials: String {
-        familyMember.name
+        name
             .split(separator: " ")
             .prefix(2)
             .compactMap { $0.first }
@@ -400,7 +418,7 @@ private struct FamilyMemberRow: View {
     
     private var avatarColor: Color {
         let colors: [Color] = [.blue, .green, .orange, .pink, .purple, .teal, .indigo]
-        let index = abs(familyMember.name.hashValue) % colors.count
+        let index = abs(name.hashValue) % colors.count
         
         return colors[index]
     }

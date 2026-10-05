@@ -14,11 +14,10 @@ final class FamilyMember {
 
     var name: String
     var assignment: String
-
-    @Attribute(.externalStorage)
     var avatarImageData: Data?
 
     var sortOrder: Int
+    var assignmentOrder: Int
     var createdAt: Date
 
     init(
@@ -26,6 +25,7 @@ final class FamilyMember {
         assignment: String,
         avatarImageData: Data? = nil,
         sortOrder: Int = 0,
+        assignmentOrder: Int = 0,
         createdAt: Date = Date()
     ) {
         self.id = UUID()
@@ -33,6 +33,7 @@ final class FamilyMember {
         self.assignment = assignment
         self.avatarImageData = avatarImageData
         self.sortOrder = sortOrder
+        self.assignmentOrder = assignmentOrder
         self.createdAt = createdAt
     }
 }
